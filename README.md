@@ -20,8 +20,6 @@ body { font-family: sans-serif; padding: 10px; }
   border-bottom: 1px solid #ccc;
 }
 
-
-
 .piece {
   display: inline-block;
   padding: 6px 10px;
@@ -50,7 +48,6 @@ body { font-family: sans-serif; padding: 10px; }
   position: relative;
 }
 
-
 .checkbox {
   position: absolute;
   top: 5px;
@@ -74,11 +71,17 @@ textarea { width: 100%; height: 50px; }
   font-size: 18px;
 }
 
-.panel, .textblock, textarea, input {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none; /* iOS長押しメニュー無効 */
-}
+  .panel, .textblock {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  textarea, input {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
 
 .num {
   position: absolute;
@@ -91,6 +94,7 @@ textarea { width: 100%; height: 50px; }
   width: 360px;
   height: 6px;
   background: blue;
+  transition: all 0.15s ease;
 }
 
 .export-mode .tools,
@@ -152,6 +156,15 @@ button { padding:6px 10px; cursor:pointer; }
 
 #statusBar { margin-left:auto; gap:10px; }
 #saveStatus { font-weight:bold; }
+
+.panel.dragging, .textblock.dragging {
+  opacity: 0.6;
+  transform: scale(1.03);
+}
+
+.panel, .textblock {
+  transition: transform 0.15s ease;
+}
 </style>
 </head>
 
@@ -221,6 +234,7 @@ let holdTimer = null;
 let isDragging = false;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let dropSuccess = false;
 
 let currentKey = "story_default";
 
@@ -314,67 +328,95 @@ function createCanvas(canvas){
 function createPanel(){
   const div=document.createElement("div");
   div.className="panel";
-
-  div.onpointerdown = (e) => {
-
-  e.preventDefault();
-
-  holdTimer = setTimeout(() => {
-
-    isDragging = true;
-
-    const rect = div.getBoundingClientRect();
-
-    dragOffsetX = e.clientX - rect.left;
-
-    dragOffsetY = e.clientY - rect.top;
-
-    div.setPointerCapture(e.pointerId);
-
-  }, 200);
-
-};
-
-div.onpointermove = (e) => {
-
-  if (!isDragging) return;
-
-  const x = e.clientX - dragOffsetX;
-
-  const y = e.clientY - dragOffsetY;
-
-  div.style.position = "absolute";
-
-  div.style.zIndex = 999;
-
-  div.style.left = x + "px";
-
-  div.style.top = y + "px";
-
-};
-
-div.onpointerup = () => {
-
-  clearTimeout(holdTimer);
-
-  isDragging = false;
-
-};
-
-div.onpointercancel = () => {
-
-  clearTimeout(holdTimer);
-
-  isDragging = false;
-
-};
-
-  const num=document.createElement("div");
-  num.className="num";
-
   const cb=document.createElement("input");
   cb.type="checkbox";
   cb.className="checkbox";
+
+  let originParent = null;
+  let originNext = null;
+
+  div.onpointerdown = (e) => {
+    if(!cb.checked) return;
+
+    // disable drawing while editing
+    div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="none");
+
+    e.preventDefault();
+    holdTimer = setTimeout(() => {
+      // group move
+      const targets = selected.has(div) ? [...selected] : [div];
+      dragSrc = targets;
+
+      isDragging = true;
+      div.classList.add("dragging");
+      indicator.style.display = "block";
+      indicator.style.height = "6px";
+      const rect = div.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      div.setPointerCapture(e.pointerId);
+    }, 400);
+  };
+
+  div.onpointermove = (e) => {
+    if (!isDragging) return;
+
+    // indicator ensure visible
+    indicator.style.display = "block";
+
+    const target = getDrop(e);
+    const btn = document.getElementById("addBottom");
+
+    if(target){
+      const r = target.getBoundingClientRect();
+      if(e.clientY < r.top + r.height/2){
+        container.insertBefore(indicator, target);
+      }else{
+        container.insertBefore(indicator, target.nextSibling);
+      }
+    }else if(btn){
+      container.insertBefore(indicator, btn);
+    }else{
+      container.appendChild(indicator);
+    }
+  };
+
+  div.onpointerup = () => {
+    clearTimeout(holdTimer);
+
+    if(isDragging){
+      isDragging = false;
+
+      div.classList.remove("dragging");
+
+      if(indicator.parentNode){
+        if(Array.isArray(dragSrc)){
+          dragSrc.forEach(el=>{
+            container.insertBefore(el, indicator);
+          });
+        }else{
+          container.insertBefore(div, indicator);
+        }
+        indicator.remove();
+        dropSuccess = true;
+      }else{
+        // fallback: insert at end
+        container.appendChild(div);
+      }
+    }
+
+    div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="");
+    isDragging = false;
+  };
+
+  div.onpointercancel = () => {
+    clearTimeout(holdTimer);
+    isDragging = false;
+
+    div.classList.remove("dragging");
+    indicator.remove();
+    div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="");
+  };
 
   cb.onchange=()=>{
     cb.checked?selected.add(div):selected.delete(div);
@@ -420,32 +462,35 @@ div.onpointercancel = () => {
 
   canvas.style.touchAction = "none"; // iPad必須
 
-canvas.onpointerdown = (e) => {
-  e.preventDefault();
-  canvas.setPointerCapture(e.pointerId);
-  draw.start(e.offsetX, e.offsetY);
-};
+  canvas.onpointerdown = (e) => {
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    draw.start(e.offsetX, e.offsetY);
+  };
 
-canvas.onpointermove = (e) => {
-  if (e.pressure > 0 || e.buttons === 1) {
-    draw.draw(e.offsetX, e.offsetY);
-  }
-};
+  canvas.onpointermove = (e) => {
+    if (e.pressure > 0 || e.buttons === 1) {
+      draw.draw(e.offsetX, e.offsetY);
+    }
+  };
 
-canvas.onpointerup = (e) => {
-  draw.end();
-};
+  canvas.onpointerup = (e) => {
+    draw.end();
+  };
 
-canvas.onpointercancel = () => {
-  draw.end();
-};
+  canvas.onpointercancel = () => {
+    draw.end();
+  };
 
   const text=document.createElement("textarea");
- 
+
   text.oninput = ()=>{
-  setStatus("未保存");
-  saveAll();
-};
+    setStatus("未保存");
+    saveAll();
+  };
+
+  const num=document.createElement("div");
+  num.className="num";
 
   div.append(num,cb,tools,canvas,text);
 
@@ -460,47 +505,94 @@ canvas.onpointercancel = () => {
 function createText(){
   const div=document.createElement("div");
   div.className="textblock";
-
-  div.onpointerdown = (e) => {
-  e.preventDefault();
-
-  holdTimer = setTimeout(() => {
-    isDragging = true;
-
-    const rect = div.getBoundingClientRect();
-    dragOffsetX = e.clientX - rect.left;
-    dragOffsetY = e.clientY - rect.top;
-
-    div.setPointerCapture(e.pointerId);
-  }, 200); // 0.2秒長押しでドラッグ開始
-};
-
-div.onpointermove = (e) => {
-  if (!isDragging) return;
-
-  const x = e.clientX - dragOffsetX;
-  const y = e.clientY - dragOffsetY;
-
-  div.style.position = "absolute";
-  div.style.zIndex = 999;
-
-  div.style.left = x + "px";
-  div.style.top = y + "px";
-};
-
-div.onpointerup = () => {
-  clearTimeout(holdTimer);
-  isDragging = false;
-};
-
-div.onpointercancel = () => {
-  clearTimeout(holdTimer);
-  isDragging = false;
-};
-
   const cb=document.createElement("input");
   cb.type="checkbox";
   cb.className="checkbox";
+
+  let originParent = null;
+  let originNext = null;
+
+  div.onpointerdown = (e) => {
+    if(!cb.checked) return;
+
+    // disable drawing while editing
+    div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="none");
+
+    e.preventDefault();
+    holdTimer = setTimeout(() => {
+      // group move
+      const targets = selected.has(div) ? [...selected] : [div];
+      dragSrc = targets;
+
+      isDragging = true;
+      div.classList.add("dragging");
+      indicator.style.display = "block";
+      indicator.style.height = "6px";
+      const rect = div.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      div.setPointerCapture(e.pointerId);
+    }, 400); // 0.4秒長押しでドラッグ開始
+  };
+
+  div.onpointermove = (e) => {
+    if (!isDragging) return;
+
+    // indicator ensure visible
+    indicator.style.display = "block";
+
+    const target = getDrop(e);
+    const btn = document.getElementById("addBottom");
+
+    if(target){
+      const r = target.getBoundingClientRect();
+      if(e.clientY < r.top + r.height/2){
+        container.insertBefore(indicator, target);
+      }else{
+        container.insertBefore(indicator, target.nextSibling);
+      }
+    }else if(btn){
+      container.insertBefore(indicator, btn);
+    }else{
+      container.appendChild(indicator);
+    }
+  };
+
+  div.onpointerup = () => {
+    clearTimeout(holdTimer);
+
+    if(isDragging){
+      isDragging = false;
+
+      div.classList.remove("dragging");
+
+      if(indicator.parentNode){
+        if(Array.isArray(dragSrc)){
+          dragSrc.forEach(el=>{
+            container.insertBefore(el, indicator);
+          });
+        }else{
+          container.insertBefore(div, indicator);
+        }
+        indicator.remove();
+        dropSuccess = true;
+      }else{
+        // fallback: insert at end
+        container.appendChild(div);
+      }
+    }
+    div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="");
+    isDragging = false;
+  };
+
+  div.onpointercancel = () => {
+    clearTimeout(holdTimer);
+    isDragging = false;
+
+    div.classList.remove("dragging");
+    indicator.remove();
+    div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="");
+  };
 
   const input=document.createElement("input");
   input.placeholder="見出し";
@@ -525,10 +617,10 @@ div.onpointercancel = () => {
 
 /* ===== ピース ===== */
 document.querySelectorAll(".piece").forEach(p=>{
-  p.addEventListener("dragstart",()=>{
-    dragSrc="new";
-    dragType=p.dataset.type;
-  });
+  p.onclick = ()=>{
+    if(p.dataset.type==="panel") addPanel();
+    else addText();
+  };
 });
 
 /* ===== UI ===== */
@@ -694,6 +786,7 @@ container.addEventListener("dragover",e=>{
 
 container.addEventListener("drop",e=>{
   e.preventDefault();
+  dropSuccess = true;
 
   if(dragSrc==="new"){
     const el = dragType==="panel"?createPanel():createText();
