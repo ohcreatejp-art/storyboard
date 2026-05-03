@@ -92,9 +92,11 @@ textarea { width: 100%; height: 50px; }
 
 .drop-indicator {
   width: 360px;
-  height: 6px;
-  background: blue;
-  transition: all 0.15s ease;
+  height: 10px;
+  background: linear-gradient(90deg, rgba(0,122,255,0.2), rgba(0,122,255,0.9), rgba(0,122,255,0.2));
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(0,122,255,0.25), 0 6px 14px rgba(0,0,0,0.15);
+  transition: all 0.12s ease;
 }
 
 .export-mode .tools,
@@ -164,6 +166,10 @@ button { padding:6px 10px; cursor:pointer; }
 
 .panel, .textblock {
   transition: transform 0.15s ease;
+}
+
+.panel.drop-target, .textblock.drop-target {
+  outline: 2px solid rgba(0,122,255,0.6);
 }
 </style>
 </head>
@@ -360,12 +366,16 @@ function createPanel(){
 
   div.onpointermove = (e) => {
     if (!isDragging) return;
+    // clear previous highlight
+    container.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
 
     // indicator ensure visible
     indicator.style.display = "block";
 
     const target = getDrop(e);
     const btn = document.getElementById("addBottom");
+
+    if(target) target.classList.add('drop-target');
 
     if(target){
       const r = target.getBoundingClientRect();
@@ -383,6 +393,8 @@ function createPanel(){
 
   div.onpointerup = () => {
     clearTimeout(holdTimer);
+
+    container.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
 
     if(isDragging){
       isDragging = false;
@@ -413,6 +425,7 @@ function createPanel(){
     clearTimeout(holdTimer);
     isDragging = false;
 
+    container.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
     div.classList.remove("dragging");
     indicator.remove();
     div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="");
@@ -463,22 +476,26 @@ function createPanel(){
   canvas.style.touchAction = "none"; // iPad必須
 
   canvas.onpointerdown = (e) => {
+    if(cb.checked) return; // 編集モード時は描画禁止
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     draw.start(e.offsetX, e.offsetY);
   };
 
   canvas.onpointermove = (e) => {
+    if(cb.checked) return;
     if (e.pressure > 0 || e.buttons === 1) {
       draw.draw(e.offsetX, e.offsetY);
     }
   };
 
   canvas.onpointerup = (e) => {
+    if(cb.checked) return;
     draw.end();
   };
 
   canvas.onpointercancel = () => {
+    if(cb.checked) return;
     draw.end();
   };
 
@@ -537,12 +554,16 @@ function createText(){
 
   div.onpointermove = (e) => {
     if (!isDragging) return;
+    // clear previous highlight
+    container.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
 
     // indicator ensure visible
     indicator.style.display = "block";
 
     const target = getDrop(e);
     const btn = document.getElementById("addBottom");
+
+    if(target) target.classList.add('drop-target');
 
     if(target){
       const r = target.getBoundingClientRect();
@@ -560,6 +581,8 @@ function createText(){
 
   div.onpointerup = () => {
     clearTimeout(holdTimer);
+
+    container.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
 
     if(isDragging){
       isDragging = false;
@@ -589,6 +612,7 @@ function createText(){
     clearTimeout(holdTimer);
     isDragging = false;
 
+    container.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
     div.classList.remove("dragging");
     indicator.remove();
     div.querySelectorAll("canvas").forEach(c=>c.style.pointerEvents="");
