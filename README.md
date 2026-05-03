@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -50,6 +50,7 @@ body { font-family: sans-serif; padding: 10px; }
   position: relative;
 }
 
+
 .checkbox {
   position: absolute;
   top: 5px;
@@ -71,6 +72,12 @@ textarea { width: 100%; height: 50px; }
   width: 100%;
   text-align: center;
   font-size: 18px;
+}
+
+.panel, .textblock, textarea, input {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* iOS長押しメニュー無効 */
 }
 
 .num {
@@ -115,6 +122,10 @@ textarea { width: 100%; height: 50px; }
   .panel, .textblock {
     page-break-inside: avoid;
   }
+}
+.panel, .textblock {
+  touch-action: none; /* スクロール・選択防止 */
+  user-select: none;  /* 青ハイライト防止 */
 }
 
 /* UI improvements */
@@ -205,6 +216,11 @@ let selected = new Set();
 let dragSrc = null;
 let dragType = null;
 let flowDirection = "right";
+/* 長押しドラッグ */
+let holdTimer = null;
+let isDragging = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
 
 let currentKey = "story_default";
 
@@ -299,6 +315,60 @@ function createPanel(){
   const div=document.createElement("div");
   div.className="panel";
 
+  div.onpointerdown = (e) => {
+
+  e.preventDefault();
+
+  holdTimer = setTimeout(() => {
+
+    isDragging = true;
+
+    const rect = div.getBoundingClientRect();
+
+    dragOffsetX = e.clientX - rect.left;
+
+    dragOffsetY = e.clientY - rect.top;
+
+    div.setPointerCapture(e.pointerId);
+
+  }, 200);
+
+};
+
+div.onpointermove = (e) => {
+
+  if (!isDragging) return;
+
+  const x = e.clientX - dragOffsetX;
+
+  const y = e.clientY - dragOffsetY;
+
+  div.style.position = "absolute";
+
+  div.style.zIndex = 999;
+
+  div.style.left = x + "px";
+
+  div.style.top = y + "px";
+
+};
+
+div.onpointerup = () => {
+
+  clearTimeout(holdTimer);
+
+  isDragging = false;
+
+};
+
+div.onpointercancel = () => {
+
+  clearTimeout(holdTimer);
+
+  isDragging = false;
+
+};
+
   const num=document.createElement("div");
   num.className="num";
 
@@ -391,6 +461,43 @@ function createText(){
   const div=document.createElement("div");
   div.className="textblock";
 
+  div.onpointerdown = (e) => {
+  e.preventDefault();
+
+  holdTimer = setTimeout(() => {
+    isDragging = true;
+
+    const rect = div.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+
+    div.setPointerCapture(e.pointerId);
+  }, 200); // 0.2秒長押しでドラッグ開始
+};
+
+div.onpointermove = (e) => {
+  if (!isDragging) return;
+
+  const x = e.clientX - dragOffsetX;
+  const y = e.clientY - dragOffsetY;
+
+  div.style.position = "absolute";
+  div.style.zIndex = 999;
+
+  div.style.left = x + "px";
+  div.style.top = y + "px";
+};
+
+div.onpointerup = () => {
+  clearTimeout(holdTimer);
+  isDragging = false;
+};
+
+div.onpointercancel = () => {
+  clearTimeout(holdTimer);
+  isDragging = false;
+};
+
   const cb=document.createElement("input");
   cb.type="checkbox";
   cb.className="checkbox";
@@ -414,6 +521,7 @@ function createText(){
 
   return div;
 }
+
 
 /* ===== ピース ===== */
 document.querySelectorAll(".piece").forEach(p=>{
